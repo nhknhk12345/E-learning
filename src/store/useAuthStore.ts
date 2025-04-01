@@ -1,60 +1,60 @@
 import { create } from 'zustand';
-import { AuthState, User } from '@/types/auth';
-import axiosInstance from '@/api/axios.config';
+import { User } from '@/types/auth';
+import { setAccessToken, clearAccessToken } from '@/api/axios.config';
 
-export const useAuthStore = create<AuthState>((set) => ({
+interface AuthState {
+  user: User | null;
+  token: string | null;
+  isLoadingUser: boolean;
+}
+
+interface AuthStore extends AuthState {
+  setAuth: (user: User | null, token: string | null) => void;
+  clearAuth: () => void;
+  setLoadingUser: (isLoading: boolean) => void;
+}
+
+export const useAuthStore = create<AuthStore>((set) => ({
   user: null,
-  token: typeof window !== 'undefined' ? localStorage.getItem('token') : null,
-  isLoading: false,
-  error: null,
+  token: typeof window !== 'undefined' ? localStorage.getItem('access_token') : null,
+  isLoadingUser: false,
 
-  setUser: (user: User | null) => set({ user }),
-
-  login: async (email: string, password: string) => {
-    try {
-      set({ isLoading: true, error: null });
-      
-      const response = await axiosInstance.post('/auth/login', {
-        email,
-        password,
-      });
-
-      const { token, user } = response.data;
-      localStorage.setItem('token', token);
-      
-      set({
-        user,
-        token,
-        isLoading: false,
-        error: null,
-      });
-    } catch (error: any) {
-      set({
-        isLoading: false,
-        error: error.response?.data?.message || 'An error occurred during login',
-      });
-      throw error;
+  setAuth: (user, token) => {
+    if (token) {
+      localStorage.setItem('access_token', token);
+      setAccessToken(token);
     }
+    else if (user) {
+      const currentToken = localStorage.getItem('access_token');
+      if (currentToken) {
+        setAccessToken(currentToken);
+        set({ user, token: currentToken });
+        return;
+      }
+    }
+    set({ user, token });
   },
 
-  logout: () => {
-    localStorage.removeItem('token');
+  clearAuth: () => {
+    localStorage.removeItem('access_token');
+    clearAccessToken();
     set({
       user: null,
       token: null,
-      error: null,
+      isLoadingUser: false
     });
+  },
+  setLoadingUser: (isLoading: boolean) => {
+    set({ isLoadingUser: isLoading });
   },
 }));
 
-// Hook for accessing auth state in components
 export const useAuth = () => {
-  const { user, token, isLoading, error } = useAuthStore();
-  return { user, token, isLoading, error };
+  const { user, token, isLoadingUser } = useAuthStore();
+  return { user, token, isLoadingUser };
 };
 
-// Hook for accessing auth actions in components
 export const useAuthActions = () => {
-  const { login, logout, setUser } = useAuthStore();
-  return { login, logout, setUser };
+  const { setAuth, clearAuth, setLoadingUser } = useAuthStore();
+  return { setAuth, clearAuth, setLoadingUser };
 };
