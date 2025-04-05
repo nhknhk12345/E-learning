@@ -1,52 +1,29 @@
-import { RefreshTokenResponse } from '@/types/auth';
-import { ApiErrorResponse } from '@/types/response';
-import axios, { AxiosError } from 'axios';
-import { env } from '@/config/env.config';
-import { useAuthStore } from '@/store/useAuthStore';
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { ApiErrorResponse, ApiSuccessResponse } from '@/types/response';
 
-interface QueueItem {
-  resolve: (value?: unknown) => void;
-  reject: (error?: unknown) => void;
+declare module 'axios' {
+  export interface InternalAxiosRequestConfig {
+    _retry?: boolean;
+    skipAuthRefresh?: boolean;
+  }
+  export interface AxiosRequestConfig {
+    skipAuthRefresh?: boolean;
+  }
 }
 
-let accessToken: string | null = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-
-export const setAccessToken = (token: string) => {
-  accessToken = token;
-};
-
-export const getAccessToken = () => accessToken;
-
-export const clearAccessToken = () => {
-  accessToken = null;
-};
-
 export const axiosInstance = axios.create({
-  baseURL: env.API_URL,
+  baseURL: process.env.NEXT_PUBLIC_API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
   withCredentials: true,
 });
 
-let isRefreshing = false;
-let failedQueue: QueueItem[] = [];
-
-const processQueue = (error: Error | null = null, token: string | null = null) => {
-  failedQueue.forEach(prom => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token);
-    }
-  });
-  failedQueue = [];
-};
-
 axiosInstance.interceptors.request.use(
   (config) => {
-    if (accessToken) {
-      config.headers.Authorization = `Bearer ${accessToken}`;
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
@@ -58,51 +35,50 @@ axiosInstance.interceptors.request.use(
 axiosInstance.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<ApiErrorResponse>) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config as InternalAxiosRequestConfig;
     
-    if (error.response?.status === 401 && originalRequest) {
-      const errorMessage = error.response.data?.message || 'Unauthorized';
-      console.error(errorMessage);
-
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        })
-          .then(token => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            return axiosInstance(originalRequest);
-          })
-          .catch(err => Promise.reject(err));
-      }
-
-      isRefreshing = true;
-
+    // Kiểm tra xem có phải là request login không
+    const isLoginRequest = originalRequest.url?.includes('/auth/login');
+    // Kiểm tra các request auth khác
+    const isAuthRequest = originalRequest.url?.includes('/auth');
+    
+    // Nếu là request login và lỗi 400 (sai thông tin đăng nhập), trả về lỗi ngay lập tức
+    if (isLoginRequest && error.response?.status === 400) {
+      return Promise.reject(error);
+    }
+    
+    // Xử lý refresh token cho các request khác khi token hết hạn (401)
+    if (error.response?.status === 401 && 
+        !isAuthRequest && 
+        originalRequest && 
+        !originalRequest._retry && 
+        !originalRequest.skipAuthRefresh) {
+      originalRequest._retry = true;
+      
       try {
-        const response = await axiosInstance.post<RefreshTokenResponse>('/auth/refresh');
-        const newAccessToken = response.data.data.access_token;
+        const response = await axiosInstance.post<ApiSuccessResponse<{ access_token: string }>>('/auth/refresh', null, { 
+          skipAuthRefresh: true,
+          withCredentials: true
+        });
         
-        setAccessToken(newAccessToken);
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+        const access_token = response.data.data.access_token;
         
-        processQueue(null, newAccessToken);
+        localStorage.setItem('access_token', access_token);
+        
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        }
         
         return axiosInstance(originalRequest);
-      } catch (error) {
-        const refreshError = error instanceof Error ? error : new Error('Failed to refresh token');
-        processQueue(refreshError, null);
-
-        const store = useAuthStore.getState();
-        store.setLoadingUser(false);
-        store.clearAuth();
-        return Promise.reject({
-          ...refreshError,
-          __handled: true
-        });
-      } finally {
-        isRefreshing = false;
+      } catch (refreshError) {
+        localStorage.removeItem('access_token');
+        if (!originalRequest.url?.includes('/auth/logout')) {
+          window.location.href = '/auth/login';
+        }
+        return Promise.reject(refreshError);
       }
     }
-
+    
     return Promise.reject(error);
   }
 );

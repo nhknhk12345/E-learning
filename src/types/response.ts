@@ -5,6 +5,10 @@ export interface ApiSuccessResponse<T> {
 }
 
 export interface ApiErrorResponse {
-    status: number;
-    message: string;
+    response?: {
+        status: number;
+        data?: {
+            message: string;
+        }
+    }
 }
