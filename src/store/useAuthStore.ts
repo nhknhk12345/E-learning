@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { User } from '@/types/auth';
-import { setAccessToken, clearAccessToken } from '@/api/axios.config';
 
 interface AuthState {
   user: User | null;
@@ -22,12 +21,11 @@ export const useAuthStore = create<AuthStore>((set) => ({
   setAuth: (user, token) => {
     if (token) {
       localStorage.setItem('access_token', token);
-      setAccessToken(token);
+      set({ user, token });
     }
     else if (user) {
       const currentToken = localStorage.getItem('access_token');
       if (currentToken) {
-        setAccessToken(currentToken);
         set({ user, token: currentToken });
         return;
       }
@@ -37,13 +35,13 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   clearAuth: () => {
     localStorage.removeItem('access_token');
-    clearAccessToken();
     set({
       user: null,
       token: null,
       isLoadingUser: false
     });
   },
+
   setLoadingUser: (isLoading: boolean) => {
     set({ isLoadingUser: isLoading });
   },

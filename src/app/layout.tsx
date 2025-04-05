@@ -1,16 +1,16 @@
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
-import './globals.css';
-import QueryProvider from '@/providers/QueryProvider';
-import Header from '@/components/Header';
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import QueryProvider from "@/providers/QueryProvider";
 import { ThemeProvider } from "@/components/theme-provider";
-import { AuthProvider } from '@/components/AuthProvider';
+import { AuthProvider } from "@/components/AuthProvider";
+import { Toaster } from "sonner";
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'E-Learning Platform',
-  description: 'Learn and grow with our online courses',
+  title: "E-Learning Platform",
+  description: "Learn and grow with our online courses",
 };
 
 export default function RootLayout({
@@ -20,7 +20,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} min-h-screen bg-background font-sans antialiased`}>
+      <body
+        className={`${inter.className} min-h-screen bg-background font-sans antialiased`}
+      >
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
@@ -29,10 +31,8 @@ export default function RootLayout({
         >
           <QueryProvider>
             <AuthProvider>
-              <div className="relative flex min-h-screen flex-col">
-                <Header />
-                <main className="flex-1">{children}</main>
-              </div>
+              {children}
+              <Toaster richColors closeButton position="top-right" />
             </AuthProvider>
           </QueryProvider>
         </ThemeProvider>

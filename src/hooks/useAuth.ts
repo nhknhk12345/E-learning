@@ -1,13 +1,14 @@
 import { useEffect } from 'react';
-import { useMutation, useQuery, UseMutationOptions } from '@tanstack/react-query';
+import { useMutation, useQuery, UseMutationOptions, useQueryClient } from '@tanstack/react-query';
 import { authApi } from '@/api/authentication';
 import { LoginRequest, RegisterRequest, LoginResponse, User } from '@/types/auth';
 import { useAuth as useAuthStore, useAuthActions } from '@/store/useAuthStore';
-import { ApiSuccessResponse } from '@/types/response';
+import { ApiSuccessResponse, ApiErrorResponse } from '@/types/response';
 
 export const useAuth = () => {
   const { token } = useAuthStore();
   const { setAuth, clearAuth, setLoadingUser } = useAuthActions();
+  const queryClient = useQueryClient();
 
   const { data: userData, isPending, error } = useQuery<ApiSuccessResponse<User>>({
     queryKey: ['auth', 'me'],
@@ -27,27 +28,31 @@ export const useAuth = () => {
     }
   }, [error, setLoadingUser, clearAuth]);
 
-  const loginMutation = useMutation({
+  const loginMutation = useMutation<ApiSuccessResponse<LoginResponse>, ApiErrorResponse, LoginRequest>({
     mutationFn: (credentials: LoginRequest) => authApi.login(credentials),
-    onSuccess: (data) => {
-      setAuth(data.data.user, data.data.access_token);
+    onSuccess: (response) => {
+      setAuth(response.data.user, response.data.access_token);
     }
   });
 
-  const registerMutation = useMutation({
-    mutationFn: (userData: RegisterRequest) => authApi.register(userData),
-    onSuccess: (data) => {
-      console.log('Register success:', data);
-    }
+  const registerMutation = useMutation<ApiSuccessResponse<User>, ApiErrorResponse, RegisterRequest>({
+    mutationFn: (userData: RegisterRequest) => authApi.register(userData)
   });
 
-  const logoutMutation = useMutation({
-    mutationFn: () => authApi.logout(),
-    onSuccess: () => {
-      clearAuth();
-    },
-    onError: () => {
-      clearAuth();
+  const logoutMutation = useMutation<ApiSuccessResponse<{ message: string }>, ApiErrorResponse, void>({
+    mutationFn: async () => {
+      try {
+        const response = await authApi.logout();
+        clearAuth();
+        localStorage.removeItem('access_token');
+        queryClient.removeQueries({ queryKey: ['auth', 'me'] });
+        return response;
+      } catch (error) {
+        clearAuth();
+        localStorage.removeItem('access_token');
+        queryClient.removeQueries({ queryKey: ['auth', 'me'] });
+        throw error;
+      }
     }
   });
 
@@ -67,32 +72,20 @@ export const useAuth = () => {
   return {
     login: (
       credentials: LoginRequest,
-      options?: Omit<UseMutationOptions<LoginResponse, Error, LoginRequest>, 'mutationFn'>
+      options?: Omit<UseMutationOptions<ApiSuccessResponse<LoginResponse>, ApiErrorResponse, LoginRequest>, 'mutationFn'>
     ) => {
-      return loginMutation.mutate(credentials, {
-        ...options,
-        onSuccess: (data, variables, context) => {
-          setAuth(data.data.user, data.data.access_token);
-          options?.onSuccess?.(data, variables, context);
-        }
-      });
+      return loginMutation.mutate(credentials, options);
     },
     register: (
       userData: RegisterRequest,
-      options?: Omit<UseMutationOptions<ApiSuccessResponse<User>, Error, RegisterRequest>, 'mutationFn'>
+      options?: Omit<UseMutationOptions<ApiSuccessResponse<User>, ApiErrorResponse, RegisterRequest>, 'mutationFn'>
     ) => {
       return registerMutation.mutate(userData, options);
     },
     logout: (
-      options?: Omit<UseMutationOptions<void, Error, void>, 'mutationFn'>
+      options?: Omit<UseMutationOptions<ApiSuccessResponse<{ message: string }>, ApiErrorResponse, void>, 'mutationFn'>
     ) => {
-      return logoutMutation.mutate(undefined, {
-        ...options,
-        onSuccess: (data, variables, context) => {
-          clearAuth();
-          options?.onSuccess?.(data, variables, context);
-        }
-      });
+      return logoutMutation.mutate(undefined, options);
     },
     loginWithGoogle: handleGoogleLogin,
     

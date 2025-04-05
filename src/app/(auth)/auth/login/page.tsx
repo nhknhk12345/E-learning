@@ -26,6 +26,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { LoginRequest } from "@/types/auth";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
 // Component cho icon Google
 const GoogleIcon = () => (
@@ -75,12 +76,34 @@ export default function LoginPage() {
     login(values, {
       onSuccess: async () => {
         toast.success("Đăng nhập thành công");
-        await router.push("/courses");
+        await router.push("/");
       },
       onError: (error) => {
-        console.error("Login error:", error);
-        toast.error("Đăng nhập thất bại");
-      }
+        if (error.response?.data?.message) {
+          if (
+            error.response.status === 401 &&
+            error.response.data.message === "Tài khoản chưa được xác thực"
+          ) {
+            toast.error(
+              "Tài khoản chưa được xác thực. Vui lòng kiểm tra email để xác thực tài khoản.",
+              {
+                action: {
+                  label: "Gửi lại email",
+                  onClick: () => {
+                    toast.info("Tính năng đang được phát triển");
+                  },
+                },
+              }
+            );
+            return;
+          }
+          toast.error(error.response.data.message);
+        } else if ([400, 401, 404].includes(error.response?.status || 0)) {
+          toast.error("Email hoặc mật khẩu không đúng");
+        } else {
+          toast.error("Đã có lỗi xảy ra, vui lòng thử lại sau");
+        }
+      },
     });
   };
 
@@ -104,9 +127,14 @@ export default function LoginPage() {
             variant="outline"
             className="w-full mb-6"
             onClick={handleGoogleLogin}
+            disabled={isLoginLoading}
           >
-            <GoogleIcon />
-            Đăng nhập với Google
+            {isLoginLoading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <GoogleIcon />
+            )}
+            {isLoginLoading ? "Đang xử lý..." : "Đăng nhập với Google"}
           </Button>
 
           {/* Dòng phân cách */}
@@ -122,10 +150,7 @@ export default function LoginPage() {
           </div>
 
           <Form {...form}>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              form.handleSubmit(onSubmit)(e);
-            }} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
                 control={form.control}
                 name="email"
@@ -137,6 +162,7 @@ export default function LoginPage() {
                         type="email"
                         placeholder="your@email.com"
                         {...field}
+                        disabled={isLoginLoading}
                       />
                     </FormControl>
                     <FormMessage />
@@ -155,18 +181,27 @@ export default function LoginPage() {
                         type="password"
                         placeholder="••••••••"
                         {...field}
+                        disabled={isLoginLoading}
                       />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
               <Button
                 type="submit"
                 className="w-full"
                 disabled={isLoginLoading}
               >
-                {isLoginLoading ? "Đang đăng nhập..." : "Đăng nhập"}
+                {isLoginLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Đang đăng nhập...
+                  </>
+                ) : (
+                  "Đăng nhập"
+                )}
               </Button>
 
               <p className="text-center text-sm text-gray-600">
