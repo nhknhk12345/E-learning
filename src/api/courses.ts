@@ -1,39 +1,57 @@
-import axiosInstance from './axios.config';
+import axios from "axios";
+import { ApiResponse, CoursesResponse, Course } from "@/types/course";
 
-export interface Course {
-  id: number;
-  title: string;
-  description: string;
-  instructor: {
-    id: number;
-    name: string;
-  };
-  thumbnail: string;
-  totalLessons: number;
-}
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
-export const coursesApi = {
-  getAllCourses: async (): Promise<Course[]> => {
-    const response = await axiosInstance.get('/courses');
+export const courseApi = {
+  getAllCourses: async () => {
+    const response = await axios.get<ApiResponse<CoursesResponse>>(
+      `${BASE_URL}/course`
+    );
     return response.data;
   },
 
-  getCourseById: async (id: number): Promise<Course> => {
-    const response = await axiosInstance.get(`/courses/${id}`);
+  getCourseById: async (id: string) => {
+    const response = await axios.get<ApiResponse<Course>>(
+      `${BASE_URL}/course/${id}`
+    );
     return response.data;
   },
 
-  createCourse: async (courseData: Omit<Course, 'id'>): Promise<Course> => {
-    const response = await axiosInstance.post('/courses', courseData);
+  createCourse: async (data: Omit<Course, "_id">) => {
+    const response = await axios.post<ApiResponse<Course>>(
+      `${BASE_URL}/course`,
+      data
+    );
     return response.data;
   },
 
-  updateCourse: async (id: number, courseData: Partial<Course>): Promise<Course> => {
-    const response = await axiosInstance.put(`/courses/${id}`, courseData);
+  updateCourse: async (id: string, data: Partial<Course>) => {
+    const response = await axios.put<ApiResponse<Course>>(
+      `${BASE_URL}/course/${id}`,
+      data
+    );
     return response.data;
   },
 
-  deleteCourse: async (id: number): Promise<void> => {
-    await axiosInstance.delete(`/courses/${id}`);
+  deleteCourse: async (id: string) => {
+    const response = await axios.delete<ApiResponse<void>>(
+      `${BASE_URL}/course/${id}`
+    );
+    return response.data;
+  },
+
+  getFeaturedCourses: async () => {
+    const response = await axios.get<ApiResponse<CoursesResponse>>(
+      `${BASE_URL}/course/featured`
+    );
+    return response.data;
+  },
+
+  getNewCourses: async () => {
+    const response = await axios.get<ApiResponse<CoursesResponse>>(
+      `${BASE_URL}/course/new`
+    );
+    return response.data;
   },
 };
