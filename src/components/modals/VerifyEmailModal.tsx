@@ -96,7 +96,7 @@ export function VerifyEmailModal({
       await onVerify(code, email);
       toast.success("Xác thực email thành công");
       onClose();
-    } catch (error) {
+    } catch {
       toast.error("Mã xác thực không đúng");
     } finally {
       setIsVerifying(false);
@@ -108,7 +108,7 @@ export function VerifyEmailModal({
       await onResendCode();
       setResendCountdown(60);
       toast.success("Đã gửi lại mã xác thực");
-    } catch (error) {
+    } catch {
       toast.error("Không thể gửi lại mã xác thực");
     }
   };
@@ -137,7 +137,9 @@ export function VerifyEmailModal({
                 onChange={(e) => handleInputChange(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(index, e)}
                 onPaste={handlePaste}
-                ref={(el) => (inputRefs.current[index] = el)}
+                ref={(el) => {
+                  inputRefs.current[index] = el;
+                }}
                 disabled={isVerifying}
               />
             ))}

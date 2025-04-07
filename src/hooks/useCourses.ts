@@ -1,68 +1,130 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { coursesApi, Course } from '@/api/courses';
-import { useAuthStore } from '@/store/useAuthStore';
+import { useQuery } from '@tanstack/react-query';
+import { courseApi } from '@/api/courses';
+import { useCourseStore } from "@/store/useCourseStore";
+import { useEffect } from 'react';
+import type { Course, ApiResponse, CoursesResponse, FeaturedCoursesResponse, NewCoursesResponse } from '@/types/course';
 
-export const useCourses = () => {
-  const queryClient = useQueryClient();
-  const { token } = useAuthStore();
-
-  // Fetch all courses
+// Hook cho trang chủ
+export function useInitializeHome() {
   const {
-    data: courses,
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: ['courses'],
-    queryFn: coursesApi.getAllCourses,
-    enabled: !!token, // Only fetch if user is authenticated
+    setFeaturedCourses,
+    setNewCourses,
+    setLoading,
+    setError
+  } = useCourseStore();
+
+  const featuredCoursesQuery = useQuery<ApiResponse<FeaturedCoursesResponse>>({
+    queryKey: ['courses', 'featured'],
+    queryFn: courseApi.getFeaturedCourses,
   });
 
-  // Create course mutation
-  const createCourseMutation = useMutation({
-    mutationFn: coursesApi.createCourse,
-    onSuccess: () => {
-      // Invalidate and refetch courses query
-      queryClient.invalidateQueries({ queryKey: ['courses'] });
-    },
+  const newCoursesQuery = useQuery<ApiResponse<NewCoursesResponse>>({
+    queryKey: ['courses', 'new'],
+    queryFn: courseApi.getNewCourses,
   });
 
-  // Update course mutation
-  const updateCourseMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<Course> }) =>
-      coursesApi.updateCourse(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['courses'] });
-    },
+  useEffect(() => {
+    const isLoading = featuredCoursesQuery.isLoading || newCoursesQuery.isLoading;
+    setLoading(isLoading);
+  }, [featuredCoursesQuery.isLoading, newCoursesQuery.isLoading, setLoading]);
+
+  useEffect(() => {
+    const error = featuredCoursesQuery.error || newCoursesQuery.error;
+    setError(error);
+  }, [featuredCoursesQuery.error, newCoursesQuery.error, setError]);
+
+  useEffect(() => {
+    if (featuredCoursesQuery.data) {
+      setFeaturedCourses(featuredCoursesQuery.data.data.courses);
+    }
+  }, [featuredCoursesQuery.data, setFeaturedCourses]);
+
+  useEffect(() => {
+    if (newCoursesQuery.data) {
+      setNewCourses(newCoursesQuery.data.data.courses);
+    }
+  }, [newCoursesQuery.data, setNewCourses]);
+}
+
+// Hook cho trang danh sách khóa học
+export function useInitializeCourses() {
+  const {
+    setCourses,
+    setLoading,
+    setError
+  } = useCourseStore();
+
+  // Query cho all courses (public)
+  const coursesQuery = useQuery<ApiResponse<CoursesResponse>>({
+    queryKey: ['courses', 'all'],
+    queryFn: () => courseApi.getAllCourses(),
   });
 
-  // Delete course mutation
-  const deleteCourseMutation = useMutation({
-    mutationFn: coursesApi.deleteCourse,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['courses'] });
-    },
+  // Cập nhật loading state
+  useEffect(() => {
+    setLoading(coursesQuery.isLoading);
+  }, [coursesQuery.isLoading, setLoading]);
+
+  // Cập nhật error state
+  useEffect(() => {
+    setError(coursesQuery.error);
+  }, [coursesQuery.error, setError]);
+
+  // Cập nhật state khi có data mới
+  useEffect(() => {
+    if (coursesQuery.data) {
+      setCourses(coursesQuery.data.data.courses);
+    }
+  }, [coursesQuery.data, setCourses]);
+}
+
+// Hook chính cho tất cả chức năng liên quan đến courses
+export const useCourses = () => {
+  const { data, isLoading, error } = useQuery<ApiResponse<CoursesResponse>>({
+    queryKey: ["courses"],
+    queryFn: () => courseApi.getAllCourses(),
   });
 
   return {
-    courses,
+    courses: data?.data.courses || [],
+    meta: data?.data.meta,
     isLoading,
     error,
-    createCourse: createCourseMutation.mutate,
-    updateCourse: updateCourseMutation.mutate,
-    deleteCourse: deleteCourseMutation.mutate,
-    isCreating: createCourseMutation.isPending,
-    isUpdating: updateCourseMutation.isPending,
-    isDeleting: deleteCourseMutation.isPending,
   };
 };
 
-// Hook for fetching a single course
-export const useCourse = (courseId: number) => {
-  const { token } = useAuthStore();
-
-  return useQuery({
-    queryKey: ['courses', courseId],
-    queryFn: () => coursesApi.getCourseById(courseId),
-    enabled: !!token && !!courseId,
+// Hook cho trang danh sách khóa học
+export const useCoursesList = (params: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  level?: string;
+  category?: string;
+}) => {
+  const { data, isLoading, error } = useQuery<ApiResponse<CoursesResponse>>({
+    queryKey: ["courses", params],
+    queryFn: () => courseApi.getAllCourses(params),
   });
+
+  return {
+    courses: data?.data.data.courses || [],
+    meta: data?.data.data.meta,
+    isLoading,
+    error,
+  };
+};
+
+// Hook cho trang chi tiết khóa học
+export const useCourse = (courseId: string) => {
+  const { data, isLoading, error } = useQuery<ApiResponse<Course>>({
+    queryKey: ["course", courseId],
+    queryFn: () => courseApi.getCourseById(courseId),
+    enabled: !!courseId,
+  });
+
+  return {
+    course: data?.data,
+    isLoading,
+    error,
+  };
 };

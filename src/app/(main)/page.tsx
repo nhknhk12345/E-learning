@@ -1,9 +1,33 @@
+"use client";
+
 import HeroCarousel from "@/components/HeroCarousel";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowRight, GraduationCap, Clock, HeadphonesIcon } from "lucide-react";
+import { CourseCard } from "@/components/CourseCard";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useCourseStore } from "@/store/useCourseStore";
+import { useInitializeHome } from "@/hooks/useCourses";
+import type { Course } from "@/types/course";
+
+function CourseCardSkeleton() {
+  return (
+    <div className="space-y-3">
+      <Skeleton className="h-[180px] w-full" />
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-[100px]" />
+        <Skeleton className="h-6 w-full" />
+        <Skeleton className="h-4 w-[200px]" />
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
+  useInitializeHome();
+
+  const { featuredCourses, newCourses, isLoading, error } = useCourseStore();
+
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -15,7 +39,51 @@ export default function Home() {
       <section className="py-16 px-4 md:px-8">
         <div className="max-w-screen-xl mx-auto">
           <h2 className="text-3xl font-bold mb-8">Khóa học nổi bật</h2>
-          {/* TODO: Add featured courses grid */}
+          {error ? (
+            <div className="text-center text-red-500">
+              Có lỗi xảy ra khi tải khóa học nổi bật
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {isLoading
+                ? Array(4)
+                    .fill(0)
+                    .map((_, i) => <CourseCardSkeleton key={i} />)
+                : featuredCourses.map((course: Course) => (
+                    <CourseCard key={course._id} course={course} />
+                  ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* New Courses Section */}
+      <section className="py-16 px-4 md:px-8 bg-muted/30">
+        <div className="max-w-screen-xl mx-auto">
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-3xl font-bold">Khóa học mới</h2>
+            <Button variant="outline" asChild>
+              <Link href="/courses">
+                Xem tất cả
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+          {error ? (
+            <div className="text-center text-red-500">
+              Có lỗi xảy ra khi tải khóa học mới
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {isLoading
+                ? Array(4)
+                    .fill(0)
+                    .map((_, i) => <CourseCardSkeleton key={i} />)
+                : newCourses.map((course: Course) => (
+                    <CourseCard key={course._id} course={course} />
+                  ))}
+            </div>
+          )}
         </div>
       </section>
 

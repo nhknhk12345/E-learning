@@ -11,6 +11,7 @@ export interface User {
     balance: number;
     enrolledCourses: string[];
     completedCourses: string[];
+    boughtCourses?: string[];
     isDeleted: boolean;
     createdAt: string;
     updatedAt: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -27,8 +27,12 @@ import { useRouter } from "next/navigation";
 import { LoginRequest } from "@/types/auth";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { ForgotPasswordModal } from "@/components/modals/ForgotPasswordModal";
+import { ResetPasswordModal } from "@/components/modals/ResetPasswordModal";
+import { authApi } from "@/api/authentication";
+import { ApiErrorResponse } from "@/types/response";
+import { AxiosError } from "axios";
 
-// Component cho icon Google
 const GoogleIcon = () => (
   <svg
     className="mr-2 h-4 w-4"
@@ -64,6 +68,10 @@ type LoginForm = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const { login, isLoginLoading, loginWithGoogle } = useAuth();
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -78,37 +86,89 @@ export default function LoginPage() {
         toast.success("Đăng nhập thành công");
         await router.push("/");
       },
-      onError: (error) => {
-        if (error.response?.data?.message) {
-          if (
-            error.response.status === 401 &&
-            error.response.data.message === "Tài khoản chưa được xác thực"
-          ) {
-            toast.error(
-              "Tài khoản chưa được xác thực. Vui lòng kiểm tra email để xác thực tài khoản.",
-              {
-                action: {
-                  label: "Gửi lại email",
-                  onClick: () => {
-                    toast.info("Tính năng đang được phát triển");
-                  },
+      onError: (error: ApiErrorResponse) => {
+        if (
+          error.response.status === 401 &&
+          error.response.data.message === "Tài khoản chưa được xác thực"
+        ) {
+          toast.error(
+            "Tài khoản chưa được xác thực. Vui lòng kiểm tra email để xác thực tài khoản.",
+            {
+              action: {
+                label: "Gửi lại email",
+                onClick: () => {
+                  authApi.resendVerificationCode(values.email);
+                  toast.info("Đã gửi lại email xác thực");
                 },
-              }
-            );
-            return;
-          }
-          toast.error(error.response.data.message);
-        } else if ([400, 401, 404].includes(error.response?.status || 0)) {
-          toast.error("Email hoặc mật khẩu không đúng");
-        } else {
-          toast.error("Đã có lỗi xảy ra, vui lòng thử lại sau");
+              },
+            }
+          );
+          return;
         }
+
+        toast.error(
+          error.response.data.message ||
+            "Đã có lỗi xảy ra, vui lòng thử lại sau"
+        );
       },
     });
   };
 
   const handleGoogleLogin = () => {
     loginWithGoogle();
+  };
+
+  const handleForgotPassword = async (email: string) => {
+    try {
+      await authApi.forgotPassword(email);
+      setResetEmail(email);
+      setShowForgotPassword(false);
+      setShowResetPassword(true);
+      toast.success("Vui lòng kiểm tra email để lấy mã xác thực");
+    } catch (error) {
+      if (error instanceof AxiosError) {
+        const apiError = error.response?.data as ApiErrorResponse;
+        toast.error(
+          apiError?.response.data.message ||
+            "Đã có lỗi xảy ra, vui lòng thử lại sau"
+        );
+      } else {
+        toast.error("Đã có lỗi xảy ra, vui lòng thử lại sau");
+      }
+      throw error;
+    }
+  };
+
+  const handleResetPassword = async (
+    token: string,
+    email: string,
+    newPassword: string,
+    confirmPassword: string
+  ) => {
+    try {
+      await authApi.resetPassword(token, email, newPassword, confirmPassword);
+      toast.success("Đặt lại mật khẩu thành công, vui lòng đăng nhập lại");
+      setShowResetPassword(false);
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const handleResendResetCode = async () => {
+    try {
+      await authApi.forgotPassword(resetEmail);
+      toast.success("Đã gửi lại mã xác thực");
+    } catch (error) {
+      if (error instanceof AxiosError) {
+        const apiError = error.response?.data as ApiErrorResponse;
+        toast.error(
+          apiError?.response.data.message ||
+            "Đã có lỗi xảy ra, vui lòng thử lại sau"
+        );
+      } else {
+        toast.error("Đã có lỗi xảy ra, vui lòng thử lại sau");
+      }
+    }
   };
 
   return (
@@ -189,20 +249,26 @@ export default function LoginPage() {
                 )}
               />
 
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isLoginLoading}
-              >
-                {isLoginLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Đang đăng nhập...
-                  </>
-                ) : (
-                  "Đăng nhập"
-                )}
-              </Button>
+              <div className="flex items-center justify-between">
+                <Button
+                  type="button"
+                  variant="link"
+                  className="px-0 text-sm"
+                  onClick={() => setShowForgotPassword(true)}
+                >
+                  Quên mật khẩu?
+                </Button>
+                <Button type="submit" disabled={isLoginLoading}>
+                  {isLoginLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Đang đăng nhập...
+                    </>
+                  ) : (
+                    "Đăng nhập"
+                  )}
+                </Button>
+              </div>
 
               <p className="text-center text-sm text-gray-600">
                 Chưa có tài khoản?{" "}
@@ -210,13 +276,27 @@ export default function LoginPage() {
                   href="/auth/register"
                   className="text-blue-600 hover:underline"
                 >
-                  Đăng ký ngay
+                  Đăng ký
                 </Link>
               </p>
             </form>
           </Form>
         </CardContent>
       </Card>
+
+      <ForgotPasswordModal
+        isOpen={showForgotPassword}
+        onClose={() => setShowForgotPassword(false)}
+        onSubmit={handleForgotPassword}
+      />
+
+      <ResetPasswordModal
+        isOpen={showResetPassword}
+        onClose={() => setShowResetPassword(false)}
+        onSubmit={handleResetPassword}
+        email={resetEmail}
+        onResendCode={handleResendResetCode}
+      />
     </div>
   );
 }

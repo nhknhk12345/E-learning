@@ -45,5 +45,26 @@ export const authApi = {
     resendVerificationCode: async (email: string): Promise<ApiSuccessResponse<{ message: string }>> => {
         const response = await axios.post(`${BASE_URL}/resend-verification-email`, { email });
         return response.data;
+    },
+
+    // Quên mật khẩu
+    forgotPassword: async (email: string): Promise<ApiSuccessResponse<{ message: string }>> => {
+        const response = await axios.post(`${BASE_URL}/send-reset-password-email`, { email });
+        return response.data;
+    },
+
+    // Đặt lại mật khẩu
+    resetPassword: async (
+        token: string,
+        email: string,
+        newPassword: string,
+        confirmPassword: string
+    ): Promise<ApiSuccessResponse<{ message: string }>> => {
+        const response = await axios.post(`${BASE_URL}/reset-password/${token}`, {
+            email,
+            newPassword,
+            confirmPassword
+        });
+        return response.data;
     }
 };

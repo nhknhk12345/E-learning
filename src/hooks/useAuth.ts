@@ -1,20 +1,25 @@
+"use client";
+
 import { useEffect } from 'react';
 import { useMutation, useQuery, UseMutationOptions, useQueryClient } from '@tanstack/react-query';
 import { authApi } from '@/api/authentication';
 import { LoginRequest, RegisterRequest, LoginResponse, User } from '@/types/auth';
-import { useAuth as useAuthStore, useAuthActions } from '@/store/useAuthStore';
+import { useAuthActions } from '@/store/useAuthStore';
 import { ApiSuccessResponse, ApiErrorResponse } from '@/types/response';
 
 export const useAuth = () => {
-  const { token } = useAuthStore();
-  const { setAuth, clearAuth, setLoadingUser } = useAuthActions();
+  const { setAuth, setLoadingUser, logout } = useAuthActions();
   const queryClient = useQueryClient();
 
-  const { data: userData, isPending, error } = useQuery<ApiSuccessResponse<User>>({
+  const { data: authData, isPending } = useQuery<ApiSuccessResponse<User>, Error>({
     queryKey: ['auth', 'me'],
-    queryFn: authApi.getMe,
-    enabled: !!token,
-    retry: false
+    queryFn: async () => {
+      const response = await authApi.getMe();
+      return response;
+    },
+    retry: false,
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
@@ -22,16 +27,17 @@ export const useAuth = () => {
   }, [isPending, setLoadingUser]);
 
   useEffect(() => {
-    if (error) {
-      setLoadingUser(false);
-      clearAuth();
+    if (authData?.data) {
+      const token = localStorage.getItem('access_token');
+      setAuth(authData.data, token || '');
     }
-  }, [error, setLoadingUser, clearAuth]);
+  }, [authData?.data, setAuth]);
 
   const loginMutation = useMutation<ApiSuccessResponse<LoginResponse>, ApiErrorResponse, LoginRequest>({
     mutationFn: (credentials: LoginRequest) => authApi.login(credentials),
     onSuccess: (response) => {
       setAuth(response.data.user, response.data.access_token);
+      queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
     }
   });
 
@@ -43,26 +49,20 @@ export const useAuth = () => {
     mutationFn: async () => {
       try {
         const response = await authApi.logout();
-        clearAuth();
-        localStorage.removeItem('access_token');
-        queryClient.removeQueries({ queryKey: ['auth', 'me'] });
         return response;
       } catch (error) {
-        clearAuth();
-        localStorage.removeItem('access_token');
-        queryClient.removeQueries({ queryKey: ['auth', 'me'] });
         throw error;
       }
+    },
+    onSuccess: () => {
+      logout();
+      queryClient.removeQueries({ queryKey: ['auth', 'me'] });
+    },
+    onError: () => {
+      logout();
+      queryClient.removeQueries({ queryKey: ['auth', 'me'] });
     }
   });
-
-  useEffect(() => {
-    setLoadingUser(isPending);
-
-    if (userData) {
-      setAuth(userData.data, token);
-    }
-  }, [userData, isPending, setLoadingUser, setAuth, token]);
 
   const handleGoogleLogin = () => {
     const googleAuthUrl = authApi.getGoogleOAuthUrl();
@@ -88,19 +88,14 @@ export const useAuth = () => {
       return logoutMutation.mutate(undefined, options);
     },
     loginWithGoogle: handleGoogleLogin,
-    
     setGoogleAuth: (user: User, token: string) => {
       setAuth(user, token);
     },
-
     isLoginLoading: loginMutation.isPending,
     isRegisterLoading: registerMutation.isPending,
     isLogoutLoading: logoutMutation.isPending,
-
     loginError: loginMutation.error,
     registerError: registerMutation.error,
-    logoutError: logoutMutation.error,
-
-    user: userData?.data ?? null
+    logoutError: logoutMutation.error
   };
 };

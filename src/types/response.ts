@@ -4,11 +4,16 @@ export interface ApiSuccessResponse<T> {
     data: T;
 }
 
+export interface ApiErrorData {
+    message: string;
+    code?: string;
+    field?: string;
+    details?: Record<string, unknown>;
+}
+
 export interface ApiErrorResponse {
-    response?: {
+    response: {
         status: number;
-        data?: {
-            message: string;
-        }
-    }
+        data: ApiErrorData;
+    };
 }

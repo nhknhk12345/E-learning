@@ -1,114 +1,151 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import { useCourses } from '@/hooks/useCourses';
-import { useCoursesStore, useSyncCoursesStore } from '@/store/useCoursesStore';
-import { useAuth } from '@/store/useAuthStore';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Search } from 'lucide-react';
+import { CourseCard } from "@/components/CourseCard";
+import { Input } from "@/components/ui/input";
+import Pagination from "@/components/ui/pagination";
+import { Search } from "lucide-react";
+import { useCourseStore } from "@/store/useCourseStore";
+import { useMemo } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { Course } from "@/types/course";
 
-export default function CoursesList() {
-  const { user } = useAuth();
-  const { courses, isLoading, error, deleteCourse } = useCourses();
-  const { syncCourses } = useSyncCoursesStore();
-  const { filterCourses, setSelectedCourse } = useCoursesStore();
-  
-  // Sync React Query data with Zustand store
-  useEffect(() => {
-    if (courses) {
-      syncCourses(courses);
-    }
-  }, [courses, syncCourses]);
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-lg">Loading courses...</div>
+function CourseCardSkeleton() {
+  return (
+    <div className="space-y-3">
+      <Skeleton className="h-[180px] w-full" />
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-[100px]" />
+        <Skeleton className="h-6 w-full" />
+        <Skeleton className="h-4 w-[200px]" />
       </div>
-    );
-  }
+    </div>
+  );
+}
+
+export function CoursesList() {
+  const { courses, filters, setFilters, isLoading, error } = useCourseStore();
+
+  // Filter & Sort Logic
+  const filteredAndSortedCourses = useMemo(() => {
+    let result = [...courses];
+
+    // Filter by search
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      result = result.filter(
+        (course) =>
+          course.title.toLowerCase().includes(searchLower) ||
+          course.description.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Filter by level
+    if (filters.level !== "all") {
+      result = result.filter((course) => course.level === filters.level);
+    }
+
+    // Filter by price range
+    if (filters.priceRange) {
+      result = result.filter(
+        (course) =>
+          course.price >= filters.priceRange.min &&
+          course.price <= filters.priceRange.max
+      );
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      switch (filters.sortBy) {
+        case "newest":
+          return (
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+        case "oldest":
+          return (
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          );
+        case "price-asc":
+          return a.price - b.price;
+        case "price-desc":
+          return b.price - a.price;
+        case "rating":
+          return (b.averageRating || 0) - (a.averageRating || 0);
+        default:
+          return 0;
+      }
+    });
+
+    return result;
+  }, [courses, filters]);
+
+  // Pagination
+  const pageSize = 12;
+  const startIndex = (filters.page - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedCourses = filteredAndSortedCourses.slice(startIndex, endIndex);
+
+  const totalPages = Math.ceil(filteredAndSortedCourses.length / pageSize);
+
+  // Handlers
+  const handleSearch = (value: string) => {
+    setFilters({ ...filters, search: value, page: 1 });
+  };
+
+  const handlePageChange = (page: number) => {
+    setFilters({ ...filters, page });
+  };
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-red-500">Error loading courses: {error.message}</div>
+      <div className="text-center text-red-500 py-8">
+        Có lỗi xảy ra khi tải danh sách khóa học
       </div>
     );
   }
 
-  const handleDeleteCourse = async (courseId: number) => {
-    if (window.confirm('Are you sure you want to delete this course?')) {
-      try {
-        await deleteCourse(courseId);
-      } catch (error) {
-        console.error('Failed to delete course:', error);
-      }
-    }
-  };
-
-  const filteredCourses = filterCourses('');
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search courses..."
-            className="pl-8"
-            // onChange={(e) => handleSearch(e.target.value)}
+    <div className="space-y-8">
+      {/* Search bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Tìm kiếm khóa học..."
+          className="pl-10"
+          value={filters.search}
+          onChange={(e) => handleSearch(e.target.value)}
+        />
+      </div>
+
+      {/* Course grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {isLoading ? (
+          // Loading skeletons
+          Array(6)
+            .fill(0)
+            .map((_, i) => <CourseCardSkeleton key={i} />)
+        ) : paginatedCourses.length > 0 ? (
+          // Course list
+          paginatedCourses.map((course: Course) => (
+            <CourseCard key={course._id} course={course} />
+          ))
+        ) : (
+          // Empty state
+          <div className="col-span-full text-center py-8 text-muted-foreground">
+            Không tìm thấy khóa học nào
+          </div>
+        )}
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex justify-center mt-8">
+          <Pagination
+            currentPage={filters.page}
+            totalPages={totalPages}
+            onPageChange={handlePageChange}
           />
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredCourses.map((course) => (
-          <Card key={course.id} className="flex flex-col">
-            <CardHeader>
-              <div className="relative aspect-video w-full mb-4">
-                <img
-                  src={course.thumbnail}
-                  alt={course.title}
-                  className="object-cover rounded-md w-full h-full"
-                />
-              </div>
-              <CardTitle>{course.title}</CardTitle>
-              <CardDescription className="flex items-center justify-between">
-                <span>By {course.instructor.name}</span>
-                <span>{course.totalLessons} lessons</span>
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-gray-600">{course.description}</p>
-            </CardContent>
-            <CardFooter className="flex justify-between mt-auto">
-              <Button
-                variant="default"
-                onClick={() => setSelectedCourse(course)}
-              >
-                View Details
-              </Button>
-              {user?.role === 'admin' && (
-                <Button
-                  variant="destructive"
-                  onClick={() => handleDeleteCourse(course.id)}
-                >
-                  Delete
-                </Button>
-              )}
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
+      )}
     </div>
   );
 }

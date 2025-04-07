@@ -11,6 +11,27 @@ declare module 'axios' {
   }
 }
 
+interface RefreshResponse {
+  access_token: string;
+}
+
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (token: string) => void;
+  reject: (error: Error | AxiosError) => void;
+}> = [];
+
+const processQueue = (error: Error | AxiosError | null, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token as string);
+    }
+  });
+  failedQueue = [];
+};
+
 export const axiosInstance = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL,
   headers: {
@@ -24,6 +45,9 @@ axiosInstance.interceptors.request.use(
     const token = localStorage.getItem('access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      console.log('Token được gửi:', token);
+    } else {
+      console.log('Không tìm thấy token trong localStorage');
     }
     return config;
   },
@@ -36,50 +60,56 @@ axiosInstance.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<ApiErrorResponse>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig;
-    
-    // Kiểm tra xem có phải là request login không
-    const isLoginRequest = originalRequest.url?.includes('/auth/login');
-    // Kiểm tra các request auth khác
-    const isAuthRequest = originalRequest.url?.includes('/auth');
-    
-    // Nếu là request login và lỗi 400 (sai thông tin đăng nhập), trả về lỗi ngay lập tức
-    if (isLoginRequest && error.response?.status === 400) {
+
+    // Nếu không phải lỗi 401 hoặc request đã được retry, reject luôn
+    if (error.response?.status !== 401 || originalRequest._retry) {
       return Promise.reject(error);
     }
-    
-    // Xử lý refresh token cho các request khác khi token hết hạn (401)
-    if (error.response?.status === 401 && 
-        !isAuthRequest && 
-        originalRequest && 
-        !originalRequest._retry && 
-        !originalRequest.skipAuthRefresh) {
-      originalRequest._retry = true;
-      
+
+    // Nếu đang refresh token, queue request hiện tại
+    if (isRefreshing) {
       try {
-        const response = await axiosInstance.post<ApiSuccessResponse<{ access_token: string }>>('/auth/refresh', null, { 
-          skipAuthRefresh: true,
-          withCredentials: true
+        const token = await new Promise<string>((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
         });
-        
-        const access_token = response.data.data.access_token;
-        
-        localStorage.setItem('access_token', access_token);
-        
-        if (originalRequest.headers) {
-          originalRequest.headers.Authorization = `Bearer ${access_token}`;
-        }
-        
+        originalRequest.headers.Authorization = `Bearer ${token}`;
         return axiosInstance(originalRequest);
-      } catch (refreshError) {
-        localStorage.removeItem('access_token');
-        if (!originalRequest.url?.includes('/auth/logout')) {
-          window.location.href = '/auth/login';
-        }
-        return Promise.reject(refreshError);
+      } catch (err) {
+        return Promise.reject(err);
       }
     }
-    
-    return Promise.reject(error);
+
+    // Bắt đầu refresh token
+    originalRequest._retry = true;
+    isRefreshing = true;
+
+    try {
+      const response = await axiosInstance.post<ApiSuccessResponse<RefreshResponse>>(
+        '/auth/refresh',
+        {},
+        { skipAuthRefresh: true }
+      );
+
+      const newToken = response.data.data.access_token;
+      localStorage.setItem('access_token', newToken);
+
+      // Cập nhật token cho request hiện tại
+      originalRequest.headers.Authorization = `Bearer ${newToken}`;
+
+      // Xử lý các request trong queue
+      processQueue(null, newToken);
+
+      return axiosInstance(originalRequest);
+    } catch (refreshError) {
+      if (refreshError instanceof Error || refreshError instanceof AxiosError) {
+        // Nếu refresh token thất bại
+        processQueue(refreshError, null);
+      }
+      localStorage.removeItem('access_token');
+      return Promise.reject(refreshError);
+    } finally {
+      isRefreshing = false;
+    }
   }
 );
 
